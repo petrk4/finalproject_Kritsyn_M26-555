@@ -1,11 +1,12 @@
-"""Контракт курсов и учебная заглушка вместо будущего Parser Service."""
+"""Core читает локальный снимок; обновление выполняет Parser Service."""
 
 from datetime import UTC, datetime
 
 from valutatrade_hub.infra.database import DatabaseManager, database_operation
 from valutatrade_hub.infra.settings import SettingsLoader
+from valutatrade_hub.parser_service.storage import cache_pairs
 
-from .currencies import get_currency
+from .currencies import CryptoCurrency, get_currency
 from .exceptions import ApiRequestError
 from .utils import cached, number
 
@@ -16,8 +17,8 @@ class RateService:
     def __init__(self, storage=None, ttl=None, provider=None):
         self.storage = storage or DatabaseManager().for_directory()
         self.ttl = SettingsLoader().get("RATES_TTL_SECONDS") if ttl is None else ttl
-        self.provider = provider or self._demo_rate
-        self._fetch = cached(self.ttl)(self.provider)
+        self.provider = provider
+        self._fetch = cached(self.ttl)(provider) if provider is not None else None
 
     @staticmethod
     def _demo_rate(source, target):
@@ -32,9 +33,17 @@ class RateService:
         }
 
     @database_operation
-    def get_rate(self, source, target):
+    def get_rate(self, source, target, *, allow_stale=False):
         source, target = get_currency(source).code, get_currency(target).code
-        rates = self.storage.read("rates.json", {})
+        if source == target:
+            return {
+                "rate": 1.0,
+                "updated_at": datetime.now(UTC).isoformat(),
+                "source": "Identity",
+                "stale": False,
+            }
+        snapshot = self.storage.read("rates.json", {})
+        rates = cache_pairs(snapshot)
         key = f"{source}_{target}"
         record = rates.get(key)
         if isinstance(record, dict):
@@ -44,9 +53,10 @@ class RateService:
                     updated = updated.replace(tzinfo=UTC)
                 age = (datetime.now(UTC) - updated).total_seconds()
                 number(record["rate"])
-                if 0 <= age < self.ttl:
+                if 0 <= age < self.ttl or (allow_stale and age >= 0):
                     return {
                         **record,
+                        "stale": age >= self.ttl,
                         "source": record.get(
                             "source", rates.get("source", "Локальный кеш")
                         ),
@@ -63,7 +73,7 @@ class RateService:
                 if updated.tzinfo is None:
                     updated = updated.replace(tzinfo=UTC)
                 age = (datetime.now(UTC) - updated).total_seconds()
-                if 0 <= age < self.ttl:
+                if 0 <= age < self.ttl or (allow_stale and age >= 0):
                     return (
                         number(item["rate"]),
                         updated,
@@ -79,6 +89,7 @@ class RateService:
                 "rate": 1 / reverse[0],
                 "updated_at": reverse[1].isoformat(),
                 "source": reverse[2],
+                "stale": (datetime.now(UTC) - reverse[1]).total_seconds() >= self.ttl,
             }
         left, right = fresh(f"{source}_USD"), fresh(f"{target}_USD")
         if left and right:
@@ -86,7 +97,14 @@ class RateService:
                 "rate": left[0] / right[0],
                 "updated_at": min(left[1], right[1]).isoformat(),
                 "source": ", ".join(sorted({left[2], right[2]})),
+                "stale": (datetime.now(UTC) - min(left[1], right[1])).total_seconds()
+                >= self.ttl,
             }
+        if self._fetch is None:
+            raise ValueError(
+                f"Курс {source}→{target} отсутствует или устарел. "
+                "Выполните 'update-rates'."
+            )
         try:
             record = dict(self._fetch(source, target))
             number(record["rate"])
@@ -103,7 +121,38 @@ class RateService:
                 f"Курс {source}→{target} недоступен: {error}"
             ) from error
         rates[key] = record
-        rates["source"] = record.get("source", "ParserService")
-        rates["last_refresh"] = record["updated_at"]
-        self.storage.write("rates.json", rates)
+        self.storage.write(
+            "rates.json", {"pairs": rates, "last_refresh": record["updated_at"]}
+        )
         return record.copy()
+
+    def show_rates(self, currency=None, top=None, base="USD"):
+        if top is not None and (
+            isinstance(top, bool) or not isinstance(top, int) or top < 1
+        ):
+            raise ValueError("--top должен быть положительным целым числом")
+        base = get_currency(base).code
+        snapshot = self.storage.read("rates.json", {})
+        pairs = cache_pairs(snapshot)
+        if not pairs:
+            raise ValueError(
+                "Локальный кеш курсов пуст. "
+                "Выполните 'update-rates', чтобы загрузить данные."
+            )
+        codes = {pair.split("_")[0] for pair in pairs}
+        if currency:
+            currency = currency.upper()
+            if currency not in codes:
+                raise ValueError(f"Курс для '{currency}' не найден в кеше.")
+            codes = {currency}
+        if top is not None:
+            codes = {
+                code for code in codes if isinstance(get_currency(code), CryptoCurrency)
+            }
+        rows = []
+        for code in sorted(codes):
+            rate = self.get_rate(code, base, allow_stale=True)
+            rows.append({"pair": f"{code}_{base}", **rate})
+        if top is not None:
+            rows = sorted(rows, key=lambda row: row["rate"], reverse=True)[:top]
+        return {"rows": rows, "last_refresh": snapshot.get("last_refresh")}

@@ -1,192 +1,235 @@
 # finalproject_Kritsyn_M26-555
 
-Учебное консольное приложение для управления виртуальным валютным портфелем.
+Учебный валютный кошелёк: Core Service (пользователи, портфели, сделки)
+и отдельный Parser Service (получение котировок, снимок и история).
 Автор: Petr Kritsyn, группа M26-555.
-
-Реализованы разделы 2.1–2.2 задания: модели User, Wallet, Portfolio,
-регистрация, вход, просмотр портфеля, покупка, продажа и получение курсов.
-Добавлены иерархия валют, пользовательские исключения, синглтоны настроек
-и хранилища, структурированное логирование с ротацией.
 
 ## Установка и запуск
 
-Требуются Python 3.12+ и uv. Из корня проекта:
+Требуются Python 3.12+ и uv:
 
 ```console
 uv sync --locked
 uv run wallet
 ```
 
-Альтернативы: `uv run python main.py` или `uv run python -m valutatrade_hub`.
-Справка: `uv run wallet --help`. Другой каталог данных:
-`uv run wallet --data-dir ./my-wallet-data`.
-В PyCharm выберите интерпретатор `.venv/Scripts/python.exe` (Windows).
+Альтернативы: `uv run python main.py`, `uv run python -m valutatrade_hub`.
+PyCharm на Windows: интерпретатор `.venv/Scripts/python.exe`.
+`wallet --help` показывает параметры запуска; `help` внутри CLI — команды.
+Другой каталог: `uv run wallet --data-dir ./my-wallet-data`.
+Другие настройки: `uv run wallet --config config.json`.
+
+## Ключи внешних API
+
+Зарегистрируйтесь на [ExchangeRate-API](https://www.exchangerate-api.com/) и
+задайте EXCHANGERATE_API_KEY в окружении процесса. Ключ не хранится в коде,
+конфигурации TOML, репозитории или логах. Пример для PowerShell:
+
+```powershell
+$env:EXCHANGERATE_API_KEY = '<ваш ключ>'
+# При необходимости — Demo-ключ CoinGecko:
+$env:COINGECKO_API_KEY = '<ваш Demo-ключ>'
+uv run wallet
+```
+
+Для bash: `export EXCHANGERATE_API_KEY='<ваш ключ>'`.
+`.env.example` описывает имена переменных; файлы .env автоматически не читаются.
+Не вставляйте настоящий ключ в отслеживаемые файлы. Текст сетевых исключений,
+содержащий URL с ключом, не попадает в сообщения клиентских ошибок.
+
+CoinGecko запрашивается через публичный endpoint; если сервис требует
+авторизацию, задайте COINGECKO_API_KEY. Demo-ключ передаётся заголовком
+x-cg-demo-api-key. Pro-ключи этим клиентом не поддерживаются.
+Без EXCHANGERATE_API_KEY обновление фиата вернёт понятную ошибку, но успешно
+полученные криптовалюты будут сохранены. Лимиты и частота обновления зависят
+от тарифа API: приложение не повторяет запросы автоматически при HTTP 429.
 
 ## Пример сессии
 
-После запуска `wallet` вводите команды по одной:
+Команды вводятся после запуска wallet:
 
 ```text
+update-rates
+show-rates
 register --username alice --password 1234
 login --username alice --password 1234
 show-portfolio
-buy --currency BTC --amount 0.05 --yes
-sell --currency BTC --amount 0.01 --yes
-show-portfolio --base EUR
+buy --currency BTC --amount 0.01 --yes
+sell --currency BTC --amount 0.005 --yes
 get-rate --from USD --to BTC
+show-rates --top 2
+show-rates --currency RUB
+show-rates --base EUR
+show-portfolio --base EUR
 currencies
 history
 logout
 exit
 ```
 
-`help` показывает список команд, `<команда> --help` — аргументы.
-Для имён или паролей с пробелами используйте кавычки.
-Без `--yes` команды buy/sell запрашивают подтверждение (y/да).
-Сумма сделки — количество покупаемой/продаваемой валюты, не стоимость в USD.
-Коды нормализуются в верхний регистр. Нулевые, отрицательные суммы, NaN,
-бесконечности и некорректные типы отклоняются.
+Справка команды: `buy --help`. Имена/пароли с пробелами заключайте в кавычки.
+Без --yes buy/sell запрашивают подтверждение. amount — количество валюты,
+не стоимость в долларах. Новый пользователь получает **10 000 виртуальных USD**
+по согласованному изменению ТЗ. Покупки списывают USD, продажи зачисляют USD.
+Продажа USD за USD не разрешена. Поддерживаются USD, EUR, GBP, RUB, BTC, ETH, SOL.
 
-По согласованию с заказчиком новый пользователь получает **10 000 виртуальных
-USD**, вместо пустого портфеля из исходного ТЗ. Покупка списывает стоимость
-с USD-кошелька, продажа возвращает USD. Недостаток средств отменяет сделку.
-USD — расчётная валюта: покупать и продавать её за саму себя нельзя.
-Начисления при повторном входе нет.
+## Parser Service
 
-## Курсы
+`update-rates` обновляет оба источника; `update-rates --source coingecko` или
+`update-rates --source exchangerate` — только один. В случае частичного сбоя
+CLI сообщает об этом и сохраняет данные работающего источника. При полном
+отказе история и снимок не меняются. Отсутствие ключа не препятствует запуску CLI.
 
-На этапе 2.2 используется разрешённая ТЗ заглушка. Поддерживаются USD, EUR,
-RUB, BTC, ETH; значения учебные, **не текущие рыночные котировки**.
-Источник явно указан в CLI. Доступны прямые, обратные и кросс-курсы.
+Отдельный процесс, без входа в кошелёк:
 
-RateService.get_rate(from_code, to_code) возвращает словарь с rate,
-updated_at (ISO 8601, UTC) и source. Свежая запись из rates.json используется
-до RATES_TTL_SECONDS секунд (по умолчанию 300). Затем вызывается поставщик
-курсов и обновляется JSON-кэш. При сбое поставщика или устаревшем ответе
-возникает ApiRequestError; неизвестный код отклоняется до запроса.
-Поставщика можно передать через параметр provider в RateService;
-по умолчанию используется Demo. Его вызовы дополнительно кэширует замыкание.
-Отдельный Parser Service, реальные API и расписание обновления — следующий
-этап; в присланных разделах 2.1–2.2 они не требуются.
+```console
+uv run wallet-parser --once
+uv run wallet-parser --once --source coingecko
+uv run wallet-parser --interval 3600
+uv run python -m valutatrade_hub.parser_service.scheduler --once
+```
 
-## Структура
+Без --once планировщик обновляет курсы сразу, затем ждёт заданный интервал
+после завершения попытки. Ctrl+C останавливает процесс. Автозапуск в системе
+не устанавливается. Для cron/Task Scheduler можно использовать команду --once.
+Разовый запуск возвращает код 1 при полном или частичном отказе и 0 при успехе.
+Интервал по умолчанию — 3600 секунд; выбирайте его с учётом тарифа API.
+
+CoinGecko запрашивает bitcoin, ethereum, solana одним GET-запросом и возвращает
+BTC_USD, ETH_USD, SOL_USD. ExchangeRate-API запрашивается с базой USD.
+Его conversion_rates.EUR означает EUR за один USD, поэтому для EUR_USD
+сохраняется **1 / conversion_rates.EUR**. Например, 0.8 превращается в 1.25.
+Поле rates поддержано для совместимости с примером ТЗ. На неверные ключи,
+HTTP 429/5xx, сетевые ошибки, некорректный JSON и значения возникает ApiRequestError.
+
+Официальные контракты:
+[ExchangeRate-API Standard](https://www.exchangerate-api.com/docs/standard-requests),
+[CoinGecko Demo simple/price](https://docs.coingecko.com/demo/reference/simple-price).
+
+## Снимок и история
+
+Core читает только локальный rates.json. get-rate и сделки не обращаются к сети
+и не подменяют отсутствующие котировки учебными. При истечении TTL требуется
+update-rates. show-rates может показать старые значения со статусом «устарел»;
+они не используются для сделок. --top выбирает N самых дорогих криптовалют
+по цене единицы, не по капитализации. --base конвертирует через долларовые пары.
+
+```json
+{
+  "pairs": {
+    "EUR_USD": {
+      "rate": 1.25,
+      "updated_at": "2026-10-19T12:00:00Z",
+      "source": "ExchangeRate-API"
+    }
+  },
+  "last_refresh": "2026-10-19T12:00:01Z"
+}
+```
+
+exchange_rates.json — массив измерений: id, from_currency, to_currency, rate,
+timestamp, source, meta. Идентификатор: FROM_TO_ISO-UTC; повтор той же пары
+и времени не дублируется. timestamp/updated_at — время успешного получения
+и проверки ответа. Исходное время поставщика сохраняется отдельно в
+meta.provider_updated_at: свежесть получения не означает, что поставщик
+изменил котировку (фиатный API может публиковать значения реже запросов).
+meta также содержит request_ms, status_code, etag и raw_id для криптовалют.
+
+Новое значение заменяет пару только при более свежем timestamp. Старые
+измерения остаются в истории. Каждый файл записывается атомарно через
+временный файл и os.replace. Межпроцессная блокировка rates.lock защищает
+одновременные записи CLI и отдельного парсера. История пишется первой:
+если запись снимка не удалась, следующее успешное обновление восстанавливает
+его из истории. Два файла не являются единой транзакцией. История хранится
+целиком в JSON и не рассчитана на большой промышленный объём.
+
+Старый плоский кэш читается для совместимости; записи с источником Demo
+игнорируются. После обновления формат становится pairs/last_refresh.
+Пользователи и портфели сохраняют прежний формат; их межпроцессная запись
+не поддерживается — используйте один процесс Core на каталог данных.
+
+## Архитектура
 
 ```text
 valutatrade_hub/
-    logging_config.py   JSON-формат и ротация журнала
-    decorators.py       log_action
-    infra/
-        settings.py     Singleton SettingsLoader
-        database.py     Singleton DatabaseManager
     core/
-        currencies.py   Currency, FiatCurrency, CryptoCurrency, реестр
-        exceptions.py   ошибки средств, валют и внешнего API
-        models.py       User, Wallet, Portfolio
-        usecases.py     регистрация, сессия, сделки, история
-        utils.py        валидация, JSON-хранилище, кэширующее замыкание
-        rates.py        контракт курсов, кэш, Demo-поставщик
-    cli/interface.py    разбор команд и форматированный вывод
-    __main__.py         запуск python -m
-main.py                 запуск из корня проекта
-src/finalproject_kritsyn_m26_555/  совместимость с первой версией пакета
-tests/test_wallet.py    автоматические проверки
-tests/test_infrastructure.py  валюты, настройки, логи, потоки, ошибки
-.github/workflows/ci.yml
+        models.py          User, Wallet, Portfolio
+        currencies.py      Currency, FiatCurrency, CryptoCurrency, реестр
+        exceptions.py      пользовательские исключения
+        usecases.py        сценарии CLI
+        rates.py           чтение кэша, TTL, кросс-курсы, фильтры
+        utils.py           валидация, JSON и замыкание кэширования
+    infra/
+        settings.py        Singleton SettingsLoader
+        database.py        Singleton DatabaseManager и RLock
+    parser_service/
+        config.py          ParserConfig; ключи из окружения
+        api_clients.py     BaseApiClient, CoinGeckoClient, ExchangeRateApiClient
+        updater.py         RatesUpdater: получение → объединение → сохранение
+        storage.py         история, снимок, дедупликация, блокировка
+        scheduler.py       отдельная точка входа и периодический запуск
+    cli/interface.py       команды, таблицы, обработка ошибок
+    decorators.py          log_action
+    logging_config.py      JSON-логи и ротация
+main.py
 pyproject.toml
 uv.lock
+tests/
+.github/workflows/ci.yml
 ```
 
-При запуске автоматически создаётся data/ с users.json, portfolios.json,
-rates.json. Журнал операций находится в logs/actions.log.
-Пользователи хранятся с уникальной солью и
-SHA-256(password + salt), как предусмотрено учебным ТЗ; открытый пароль
-не записывается. Для промышленной системы нужен специализированный
-алгоритм хранения паролей. Информация get_user_info не содержит хеша и соли.
+Currency — ABC с неизменяемыми публичными атрибутами. Код: 2–5 латинских
+букв в верхнем регистре; CLI нормализует регистр. get_currency возвращает
+объект из реестра. Капитализации в currencies — учебные справочные значения,
+не данные API; нулевая капитализация SOL означает отсутствие оценки.
+Пароли хранятся с солью и SHA-256 согласно учебному ТЗ, без открытого текста.
+Для промышленной системы требуется специализированное хеширование паролей.
 
-История сделок хранится в поле transactions портфеля и записывается вместе
-с балансами одной атомарной заменой portfolios.json. Временные файлы удаляются
-при ошибках записи. Повреждённый JSON вызывает ошибку и не заменяется пустым.
-Регистрация изменяет два файла с откатом при обычной ошибке записи; это не
-транзакционная база данных. Запускайте только один экземпляр приложения
-для одного каталога данных. Защита от параллельных процессов и аварийного
-завершения между записью двух файлов не реализована.
+## Ошибки
 
-DatabaseManager сериализует чтение–изменение–запись через RLock внутри
-процесса; разные экземпляры WalletService используют один менеджер.
-Для отдельных каталогов создаются адаптеры хранения, а не новые менеджеры.
-Декоратор confirmed подтверждает сделки.
-shlex разбирает собственные команды, которые не исполняются системной оболочкой.
+- InsufficientFundsError: недостаточно средств; портфель не изменяется.
+- CurrencyNotFoundError: неизвестная валюта; CLI показывает поддерживаемые коды.
+- ApiRequestError: сеть, HTTP, ключ или некорректный ответ поставщика.
+- Кэш пуст/устарел: сообщение с предложением выполнить update-rates.
+- show-rates --currency ABC: курс для ABC не найден в кеше.
+- Невалидные суммы, NaN, бесконечности, повреждённый JSON: ошибка без замены
+  данных пустыми значениями.
 
-## Валюты и ошибки
+## Настройки и логи
 
-Currency — абстрактный класс с публичными неизменяемыми name/code и
-абстрактным get_display_info(). Код объекта — 2–5 латинских букв в верхнем
-регистре, имя не может быть пустым. FiatCurrency добавляет issuing_country,
-CryptoCurrency — algorithm и конечную неотрицательную market_cap.
-get_currency(code) нормализует ввод пользователя и возвращает объект из реестра.
-Команда currencies выводит строки вида:
+SettingsLoader лениво создаётся через __new__; get(key, default=None) читает
+настройку, reload(path=None) перечитывает TOML/JSON с сохранением прежних
+значений при ошибке. По умолчанию используется [tool.valutatrade] из
+pyproject.toml текущего каталога, либо встроенные значения при отсутствии файла.
+В config.json ключи задаются непосредственно в корневом объекте.
 
-```text
-[FIAT] USD — US Dollar (Issuing: United States)
-[CRYPTO] BTC — Bitcoin (Algo: SHA-256, MCAP: 1.12e12)
-```
+| Ключ | По умолчанию |
+| --- | --- |
+| DATA_DIR | data |
+| USERS_FILE / PORTFOLIOS_FILE | users.json / portfolios.json |
+| RATES_FILE / HISTORY_FILE | rates.json / exchange_rates.json |
+| RATES_TTL_SECONDS | 300 |
+| DEFAULT_BASE_CURRENCY | USD |
+| REQUEST_TIMEOUT | 10 секунд |
+| UPDATE_INTERVAL_SECONDS | 3600 секунд |
+| FIAT_CURRENCIES | EUR, GBP, RUB |
+| CRYPTO_CURRENCIES | BTC, ETH, SOL |
+| LOG_FILE / PARSER_LOG_FILE | logs/actions.log / logs/parser.log |
+| LOG_FORMAT / LOG_LEVEL | json / INFO |
+| LOG_MAX_BYTES / LOG_BACKUP_COUNT | 1048576 / 3 |
 
-Капитализации — фиксированные учебные значения, не результат запроса API.
+COINGECKO_URL и EXCHANGERATE_API_URL также можно переопределить через настройки.
+В ParserConfig доступны CRYPTO_ID_MAP и пути к снимку/истории. Ключи API —
+только окружение. Пути относительны к рабочему каталогу; --data-dir имеет
+приоритет над DATA_DIR. Расчёты сделок всегда в USD, DEFAULT_BASE_CURRENCY
+задаёт базу представления портфеля. После изменения настроек перезапустите
+сервисы для применения новых TTL и путей.
 
-| Команды / слой | Исключение | Сообщение CLI |
-| --- | --- | --- |
-| buy, sell, Wallet.withdraw | InsufficientFundsError | Недостаточно средств: доступно {available} {code}, требуется {required} {code} |
-| buy, sell, get-rate, show-portfolio, get_currency | CurrencyNotFoundError | Неизвестная валюта '{code}'; список поддерживаемых кодов и get-rate --help |
-| get-rate и сделки при сбое поставщика | ApiRequestError | Ошибка при обращении к внешнему API: {reason}; повторить позже / проверить сеть |
-
-Отсутствующий кошелёк при продаже означает доступный баланс 0 и приводит
-к InsufficientFundsError. Все три ошибки перехватываются CLI без завершения
-сессии; в бизнес-логике они пробрасываются вызывающему коду.
-
-## Настройки
-
-SettingsLoader создаётся лениво через __new__: один экземпляр в процессе,
-без чтения файлов при импорте. get(key, default=None) читает кэшированные
-настройки. reload(path=None) перечитывает их; при ошибке прежние значения
-сохраняются. По умолчанию читается pyproject.toml текущего каталога, секция
-[tool.valutatrade]; при отсутствии файла используются встроенные значения.
-Для другого TOML или JSON: `uv run wallet --config config.json`.
-JSON содержит ключи непосредственно в корневом объекте.
-
-| Ключ | По умолчанию | Назначение |
-| --- | --- | --- |
-| DATA_DIR | data | Каталог данных |
-| USERS_FILE | users.json | Имя файла пользователей внутри DATA_DIR |
-| PORTFOLIOS_FILE | portfolios.json | Имя файла портфелей внутри DATA_DIR |
-| RATES_FILE | rates.json | Имя файла кэша внутри DATA_DIR |
-| RATES_TTL_SECONDS | 300 | Свежесть курсов; 0 отключает кэш |
-| DEFAULT_BASE_CURRENCY | USD | База для show-portfolio без --base |
-| LOG_FILE | logs/actions.log | Файл журнала |
-| LOG_FORMAT | json | Поддерживается JSON Lines |
-| LOG_LEVEL | INFO | Уровень; для отладки можно DEBUG |
-| LOG_MAX_BYTES | 1048576 | Порог ротации, 1 МиБ |
-| LOG_BACKUP_COUNT | 3 | Число архивов |
-
-Относительные пути считаются от текущего рабочего каталога.
---data-dir имеет приоритет над DATA_DIR. Сделки по-прежнему рассчитываются
-в USD; DEFAULT_BASE_CURRENCY меняет только представление портфеля.
-После reload новые сервисы получают обновлённые пути и TTL; существующий
-RateService сохраняет свой TTL. Для применения новых параметров логов
-нужно повторно вызвать setup_logging или перезапустить CLI.
-
-## Журнал операций
-
-@log_action применяется к register, login, buy, sell и get_rate. Уровень INFO,
-формат — одна JSON-запись на строку. Поля: timestamp (ISO UTC), level, action,
-username, user_id, currency_code, amount, rate, base, result (OK/ERROR),
-duration_ms. Неприменимые или ещё неизвестные значения записываются как null.
-При ошибках добавляются error_type и error_message; исключение пробрасывается.
-Для buy/sell включён verbose=True: context содержит before/after/usd_balance
-при успешной сделке. Пароли, соли и хеши в журнал не передаются.
-
-RotatingFileHandler хранит actions.log и до трёх архивов .1–.3.
-Повторная настройка закрывает прежний обработчик, не дублируя строки.
-Логи и архивы в logs/ исключены из Git.
+@log_action пишет INFO JSON Lines: timestamp (ISO UTC), action, username,
+user_id, currency_code, amount, rate, base, result, duration_ms;
+при ошибках — error_type/error_message. verbose=True добавляет before/after.
+Пароли, соли и хеши не логируются. Парсер пишет этапы обновления и ошибки
+в отдельный parser.log. Ротация по размеру: 1 МиБ, три архива. logs/ исключён из Git.
 
 ## Проверки и сборка
 
@@ -197,20 +240,14 @@ uv run python -m unittest discover -s tests -v
 uv build
 ```
 
-Тесты проверяют пароли, валидацию, авторизацию, стартовые средства, сделки,
-недостаток средств, изоляцию пользователей, перезапуск, кэш, повреждённые
-файлы, отказ записи и подтверждение CLI. Дополнительно проверяются валютная
-иерархия, конфигурация, синглтоны, параллельные сделки внутри процесса,
-структура/ротация журналов и новые исключения. Используются временные каталоги.
-GitHub Actions выполняет эти проверки и собирает пакет.
-Артефакты находятся в dist/. Готовый wheel можно установить командой
-`uv tool install <путь-к-wheel>`; после установки доступна команда wallet.
+Тесты работают без сети и реальных ключей: проверяют модели, сделки,
+синглтоны, журнал, API-контракты, инверсию фиата, ошибки, TTL, историю,
+восстановление снимка, фильтры CLI и планировщик. Для прежних сценариев
+кошелька учебный поставщик внедряется только явно в тестах.
+Сборка создаёт wheel и sdist в dist/. `uv tool install <путь-к-wheel>`
+устанавливает wallet и wallet-parser. GitHub Actions запускает проверки.
 
-## Git
-
-Репозиторий: https://github.com/petrk4/finalproject_Kritsyn_M26-555
-
-Рекомендуется GitHub Flow: ветка задачи, осмысленные коммиты после проверок,
-pull request в main. .gitignore исключает локальные данные data/, окружение,
-логи, ключи и результаты сборки. Пользовательские каталоги данных следует
-также исключать из Git, если они находятся внутри проекта.
+Репозиторий: [finalproject_Kritsyn_M26-555](https://github.com/petrk4/finalproject_Kritsyn_M26-555).
+Используйте осмысленные коммиты и ветки задач. Локальные data/, logs/,
+окружение и секреты исключены из Git; пользовательские каталоги данных
+внутри проекта добавляйте в .gitignore отдельно.

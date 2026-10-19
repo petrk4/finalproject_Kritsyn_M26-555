@@ -7,10 +7,12 @@ authors = [{ name = "Petr Kritsyn" }]
 requires-python = ">=3.12"
 dependencies = [
     "prettytable>=3.18.0",
+    "requests>=2.34.2",
 ]
 
 [project.scripts]
 wallet = "valutatrade_hub.cli.interface:main"
+wallet-parser = "valutatrade_hub.parser_service.scheduler:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -43,3 +45,7 @@ LOG_FORMAT = "json"
 LOG_LEVEL = "INFO"
 LOG_MAX_BYTES = 1048576
 LOG_BACKUP_COUNT = 3
+PARSER_LOG_FILE = "logs/parser.log"
+HISTORY_FILE = "exchange_rates.json"
+REQUEST_TIMEOUT = 10
+UPDATE_INTERVAL_SECONDS = 3600

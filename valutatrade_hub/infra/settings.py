@@ -19,6 +19,10 @@ DEFAULTS = {
     "LOG_LEVEL": "INFO",
     "LOG_MAX_BYTES": 1_048_576,
     "LOG_BACKUP_COUNT": 3,
+    "PARSER_LOG_FILE": "logs/parser.log",
+    "HISTORY_FILE": "exchange_rates.json",
+    "REQUEST_TIMEOUT": 10,
+    "UPDATE_INTERVAL_SECONDS": 3600,
 }
 
 
@@ -67,10 +71,10 @@ class SettingsLoader:
 
     @staticmethod
     def _validate(values):
-        for key in ("DATA_DIR", "LOG_FILE"):
+        for key in ("DATA_DIR", "LOG_FILE", "PARSER_LOG_FILE"):
             if not isinstance(values[key], str) or not values[key].strip():
                 raise ValueError(f"Некорректная настройка {key}")
-        for key in ("USERS_FILE", "PORTFOLIOS_FILE", "RATES_FILE"):
+        for key in ("USERS_FILE", "PORTFOLIOS_FILE", "RATES_FILE", "HISTORY_FILE"):
             value = values[key]
             if (
                 not isinstance(value, str)
@@ -83,9 +87,17 @@ class SettingsLoader:
                 raise ValueError(f"{key} должен быть именем файла внутри DATA_DIR")
         if (
             len(
-                {values[key] for key in ("USERS_FILE", "PORTFOLIOS_FILE", "RATES_FILE")}
+                {
+                    values[key].casefold()
+                    for key in (
+                        "USERS_FILE",
+                        "PORTFOLIOS_FILE",
+                        "RATES_FILE",
+                        "HISTORY_FILE",
+                    )
+                }
             )
-            != 3
+            != 4
         ):
             raise ValueError("Имена JSON-файлов должны различаться")
         ttl = values["RATES_TTL_SECONDS"]

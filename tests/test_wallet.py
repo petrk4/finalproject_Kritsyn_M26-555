@@ -70,6 +70,14 @@ class ServiceTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.directory = Path(self.temporary.name)
+        rates_patch = patch(
+            "valutatrade_hub.core.usecases.RateService",
+            side_effect=lambda storage: RateService(
+                storage, provider=RateService._demo_rate
+            ),
+        )
+        rates_patch.start()
+        self.addCleanup(rates_patch.stop)
         self.service = WalletService(self.directory)
         self.service.register("alice", "1234")
 
@@ -221,10 +229,12 @@ class RateTests(unittest.TestCase):
         self.storage.write("rates.json", {"EUR_USD": {"rate": 2, "updated_at": old}})
         self.assertEqual(rates.get_rate("EUR", "USD")["rate"], 3)
         provider.assert_called_once()
-        self.assertEqual(self.storage.read("rates.json", {})["EUR_USD"]["rate"], 3)
+        self.assertEqual(
+            self.storage.read("rates.json", {})["pairs"]["EUR_USD"]["rate"], 3
+        )
 
     def test_cross_and_inverse_rates(self):
-        rates = RateService(self.storage)
+        rates = RateService(self.storage, provider=RateService._demo_rate)
         self.assertAlmostEqual(rates.get_rate("EUR", "BTC")["rate"], 1.0786 / 59337.21)
         self.assertAlmostEqual(
             rates.get_rate("USD", "BTC")["rate"] * rates.get_rate("BTC", "USD")["rate"],

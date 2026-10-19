@@ -15,7 +15,7 @@ from valutatrade_hub.core.exceptions import (
 )
 from valutatrade_hub.core.usecases import WalletService
 from valutatrade_hub.infra.settings import SettingsLoader
-from valutatrade_hub.logging_config import setup_logging
+from valutatrade_hub.logging_config import setup_logging, setup_parser_logging
 
 
 class CommandParser(argparse.ArgumentParser):
@@ -55,6 +55,12 @@ def command_parser():
     command = commands.add_parser("get-rate")
     command.add_argument("--from", dest="source", required=True)
     command.add_argument("--to", dest="target", required=True)
+    command = commands.add_parser("update-rates")
+    command.add_argument("--source", choices=("coingecko", "exchangerate"))
+    command = commands.add_parser("show-rates")
+    command.add_argument("--currency")
+    command.add_argument("--top", type=int)
+    command.add_argument("--base", default="USD")
     for name in ("help", "history", "logout", "exit", "quit", "currencies"):
         commands.add_parser(name)
     return parser
@@ -82,6 +88,35 @@ class WalletApplication:
             return True
         args = self.parser.parse_args(tokens)
         match args.command:
+            case "update-rates":
+                result = self.service.update_rates(args.source)
+                print(
+                    f"Обновлено курсов: {result['updated']}. "
+                    f"Время: {result['last_refresh']}"
+                )
+                for error in result["errors"]:
+                    print(f"Предупреждение: {error}")
+                if result["errors"]:
+                    print("Обновление частичное. Подробности в журнале Parser Service.")
+            case "show-rates":
+                result = self.service.show_rates(args.currency, args.top, args.base)
+                table = PrettyTable(["Пара", "Курс", "Обновлено", "Источник", "Статус"])
+                for row in result["rows"]:
+                    table.add_row(
+                        [
+                            row["pair"],
+                            f"{row['rate']:.8f}",
+                            row["updated_at"],
+                            row["source"],
+                            "устарел" if row.get("stale") else "актуален",
+                        ]
+                    )
+                print(f"Кеш обновлён: {result['last_refresh']}")
+                print(table if result["rows"] else "Нет курсов по заданному фильтру")
+                if any(row.get("stale") for row in result["rows"]):
+                    print(
+                        "Есть устаревшие данные. Выполните update-rates перед сделками."
+                    )
             case "exit" | "quit":
                 return False
             case "help":
@@ -153,7 +188,7 @@ class WalletApplication:
         return True
 
     def run(self):
-        print("Валютный кошелёк. Курсы по умолчанию учебные. Введите help.")
+        print("Валютный кошелёк. Для загрузки курсов: update-rates. Справка: help.")
         while True:
             try:
                 if not self.execute(input("wallet> ")):
@@ -192,6 +227,7 @@ def main():
         if args.config:
             settings.reload(args.config)
         setup_logging(settings)
+        setup_parser_logging(settings)
         service = WalletService(args.data_dir)
         WalletApplication(service).run()
     except (ValueError, OSError) as error:

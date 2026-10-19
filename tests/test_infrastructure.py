@@ -82,6 +82,14 @@ class InfrastructureTests(unittest.TestCase):
         self.old_level, self.old_propagate = logger.level, logger.propagate
         logger.handlers = []
         self.addCleanup(self.cleanup)
+        rates_patch = patch(
+            "valutatrade_hub.core.usecases.RateService",
+            side_effect=lambda storage: RateService(
+                storage, provider=RateService._demo_rate
+            ),
+        )
+        rates_patch.start()
+        self.addCleanup(rates_patch.stop)
 
     def cleanup(self):
         logger = logging.getLogger(LOGGER_NAME)

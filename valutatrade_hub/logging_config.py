@@ -21,11 +21,11 @@ class ActionFormatter(logging.Formatter):
         return json.dumps(payload, ensure_ascii=False, allow_nan=False)
 
 
-def setup_logging(settings=None):
+def setup_logging(settings=None, *, logger_name=LOGGER_NAME, path_key="LOG_FILE"):
     settings = settings or SettingsLoader()
-    path = Path(settings.get("LOG_FILE")).resolve()
+    path = Path(settings.get(path_key)).resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
-    logger = logging.getLogger(LOGGER_NAME)
+    logger = logging.getLogger(logger_name)
     handler = RotatingFileHandler(
         path,
         maxBytes=settings.get("LOG_MAX_BYTES"),
@@ -41,3 +41,9 @@ def setup_logging(settings=None):
     logger.setLevel(settings.get("LOG_LEVEL"))
     logger.propagate = False
     return logger
+
+
+def setup_parser_logging(settings=None):
+    return setup_logging(
+        settings, logger_name="valutatrade.parser", path_key="PARSER_LOG_FILE"
+    )

@@ -27,7 +27,6 @@ class WalletService:
         for name, default in (
             ("users.json", []),
             ("portfolios.json", []),
-            ("rates.json", {}),
         ):
             if not self.storage.exists(name):
                 self.storage.write(name, default)
@@ -118,6 +117,14 @@ class WalletService:
     @log_action
     def get_rate(self, source, target):
         return self.rates.get_rate(source, target)
+
+    def update_rates(self, source=None):
+        from valutatrade_hub.parser_service.updater import RatesUpdater
+
+        return RatesUpdater.create(self.storage.directory, source).run_update()
+
+    def show_rates(self, currency=None, top=None, base="USD"):
+        return self.rates.show_rates(currency, top, base)
 
     @log_action(verbose=True)
     def buy(self, currency, amount):
