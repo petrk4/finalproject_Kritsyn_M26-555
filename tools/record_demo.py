@@ -101,15 +101,22 @@ def record_session():
 
 
 def main():
-    """Сохранить запись; темп воспроизведения замедлен для чтения."""
+    """Сохранить ответы целыми блоками, оставив паузы только перед командами."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=Path("docs/demo.cast"))
     args = parser.parse_args()
     transcript = record_session()
-    events, elapsed = [], 0.0
-    for line in transcript.splitlines():
-        elapsed += 2.0 if line.startswith("wallet>") else 0.18
-        events.append([round(elapsed, 2), "o", line + "\r\n"])
+    shell_prompt = f"PS {Path.cwd()}> "
+    blocks = transcript.split("wallet> ")
+    opening = shell_prompt + "uv run python -m tools.record_demo\n" + blocks[0]
+    events = [[0.0, "o", opening.replace("\n", "\r\n") + "wallet> "]]
+    elapsed = 0.0
+    for index, block in enumerate(blocks[1:]):
+        elapsed += 3.0
+        prompt = "wallet> " if index < len(blocks) - 2 else shell_prompt
+        events.append([elapsed, "o", block.replace("\n", "\r\n") + prompt])
+    elapsed += 2.0
+    events.append([elapsed, "o", ""])
     header = {
         "version": 2,
         "width": 132,

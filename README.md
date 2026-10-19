@@ -6,10 +6,9 @@ Core Service отвечает за пользователей и сделки, P
 
 ## Демо
 
-[Смотреть демонстрацию на asciinema](https://asciinema.org/a/7RZzgqmKlfTyev3c)
+[Смотреть демонстрацию на asciinema](https://asciinema.org/a/qcB7tebHfqUdZfZ1)
 
-Регистрация, вход, покупка и продажа, портфель, курсы и обработка ошибок.
-Для воспроизводимости в демо используются фиксированные ответы API.
+Демо использует фиксированные ответы API.
 
 ## Структура
 
@@ -47,8 +46,8 @@ $env:EXCHANGERATE_API_KEY = '<ваш ключ>'
 uv run wallet
 ```
 
-При необходимости ключ CoinGecko Demo задаётся в `COINGECKO_API_KEY`.
-Ключи не сохраняются в коде. Файл `.env` автоматически не загружается.
+Ключ CoinGecko Demo, если нужен: `COINGECKO_API_KEY`.
+Переменные задаются в терминале; `.env` автоматически не загружается.
 
 ## Команды
 
@@ -59,7 +58,6 @@ register --username alice --password 1234
 login --username alice --password 1234
 update-rates
 show-rates --top 2
-show-rates --currency RUB
 buy --currency BTC --amount 0.01
 sell --currency BTC --amount 0.005
 show-portfolio --base USD
@@ -67,9 +65,8 @@ get-rate --from USD --to BTC
 exit
 ```
 
-Новый пользователь получает 10 000 виртуальных USD. Покупка списывает USD,
-продажа зачисляет USD. `amount` — количество валюты. Сделки требуют
-подтверждения; флаг `--yes` пропускает его. Справка: `help` или `buy --help`.
+Стартовый баланс — 10 000 виртуальных USD. `amount` — количество валюты.
+Покупка и продажа требуют подтверждения. Справка: `help`.
 
 ## Обновление курсов и хранение
 
@@ -89,8 +86,6 @@ JSON-файлы создаются автоматически в `data/`: `users
 Core читает локальный кэш. TTL по умолчанию — 300 секунд; при устаревании
 курсов нужно выполнить `update-rates`. Настройки находятся в
 `[tool.valutatrade]` файла `pyproject.toml`.
-
-Логи операций и парсера: `logs/actions.log` и `logs/parser.log`.
 
 ## Проверки и сборка
 
