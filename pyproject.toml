@@ -1,0 +1,32 @@
+[project]
+name = "finalproject_Kritsyn_M26-555"
+version = "0.1.0"
+description = "Консольное приложение для имитации валютного кошелька"
+readme = "README.md"
+authors = [{ name = "Petr Kritsyn" }]
+requires-python = ">=3.12"
+dependencies = [
+    "prettytable>=3.18.0",
+]
+
+[project.scripts]
+wallet = "finalproject_kritsyn_m26_555.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/finalproject_kritsyn_m26_555"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.17.1",
+]

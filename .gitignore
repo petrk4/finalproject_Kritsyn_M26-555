@@ -1,0 +1,25 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# IDE and quality tools
+.idea/
+.vscode/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local configuration and wallet data
+.env
+.env.*
+!.env.example
+data/
+*.log
