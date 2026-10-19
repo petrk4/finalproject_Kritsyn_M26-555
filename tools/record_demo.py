@@ -101,7 +101,7 @@ def record_session():
 
 
 def main():
-    """Сохранить запись и текст; темп воспроизведения замедлен для чтения."""
+    """Сохранить запись; темп воспроизведения замедлен для чтения."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=Path("docs/demo.cast"))
     args = parser.parse_args()
@@ -123,7 +123,6 @@ def main():
         + "\n",
         encoding="utf-8",
     )
-    args.output.with_suffix(".txt").write_text(transcript, encoding="utf-8")
     print(f"Демо записано: {args.output} ({elapsed:.1f} с)")
 
 
