@@ -19,7 +19,10 @@ from valutatrade_hub.logging_config import setup_logging, setup_parser_logging
 
 
 class CommandParser(argparse.ArgumentParser):
+    """Парсер команд, сообщающий об ошибке без завершения сессии."""
+
     def error(self, message):
+        """Преобразовать ошибку разбора в ValueError для обработки CLI."""
         raise ValueError(message)
 
 
@@ -39,6 +42,7 @@ def confirmed(function):
 
 
 def command_parser():
+    """Построить argparse-парсер интерактивных команд."""
     parser = CommandParser(prog="wallet", description="Команды валютного кошелька")
     commands = parser.add_subparsers(dest="command", required=True)
     for name in ("register", "login"):
@@ -67,12 +71,15 @@ def command_parser():
 
 
 class WalletApplication:
+    """Консольный цикл, разбирающий команды и отображающий результаты."""
+
     def __init__(self, service=None):
         self.service = service or WalletService()
         self.parser = command_parser()
 
     @confirmed
     def trade(self, args):
+        """Вызвать сценарий подтверждённой сделки и вывести её результат."""
         result = getattr(self.service, args.command)(args.currency, args.amount)
         label = "Покупка" if args.command == "buy" else "Продажа"
         print(f"{label} выполнена: {result['amount']:.8f} {result['currency']}")
@@ -83,6 +90,7 @@ class WalletApplication:
         print(f"Источник: {result['source']}")
 
     def execute(self, line):
+        """Исполнить строку команды; вернуть False для выхода из CLI."""
         tokens = shlex.split(line)
         if not tokens:
             return True
@@ -188,6 +196,7 @@ class WalletApplication:
         return True
 
     def run(self):
+        """Читать команды до выхода, обрабатывая ошибки без потери сессии."""
         print("Валютный кошелёк. Для загрузки курсов: update-rates. Справка: help.")
         while True:
             try:
@@ -213,6 +222,7 @@ class WalletApplication:
 
 
 def main():
+    """Разобрать аргументы запуска и выполнить точку входа модуля."""
     parser = argparse.ArgumentParser(description="Консольный валютный кошелёк")
     parser.add_argument(
         "--version", action="version", version=version("finalproject_Kritsyn_M26-555")

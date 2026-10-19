@@ -12,8 +12,12 @@ from .models import Portfolio, User, Wallet
 from .rates import RateService
 from .utils import number
 
+INITIAL_USD_BALANCE = 10_000
+
 
 class WalletService:
+    """Сценарии кошелька для текущей сессии и локального хранилища."""
+
     def __init__(self, directory=None, *, rates=None):
         self.settings = SettingsLoader()
         self.database = DatabaseManager()
@@ -34,13 +38,16 @@ class WalletService:
     @log_action
     @database_operation
     def register(self, username, password):
+        """Создать уникальную учётную запись и портфель со стартовыми USD."""
         users = self.storage.read("users.json", [])
         user_id = max((item["user_id"] for item in users), default=0) + 1
         user = User(user_id, username, "pending", "pending", datetime.now(UTC))
         if any(item["username"] == user.username for item in users):
             raise ValueError(f"Имя пользователя '{user.username}' уже занято")
         user.change_password(password)
-        portfolio = Portfolio(user_id, {"USD": Wallet("USD", 10_000)}, user=user)
+        portfolio = Portfolio(
+            user_id, {"USD": Wallet("USD", INITIAL_USD_BALANCE)}, user=user
+        )
         portfolios = self.storage.read("portfolios.json", [])
         old_portfolios = portfolios.copy()
         portfolios.append(portfolio.to_dict())
@@ -54,6 +61,7 @@ class WalletService:
 
     @log_action
     def login(self, username, password):
+        """Проверить учётные данные и установить пользователя текущей сессии."""
         for record in self.storage.read("users.json", []):
             if record["username"] == username:
                 user = User.from_dict(record)
@@ -64,6 +72,7 @@ class WalletService:
         raise ValueError(f"Пользователь '{username}' не найден")
 
     def logout(self):
+        """Завершить текущую сессию, не изменяя сохранённые данные."""
         self.current_user = None
 
     def _require_login(self):
@@ -89,6 +98,7 @@ class WalletService:
         raise ValueError("Портфель пользователя не найден")
 
     def show_portfolio(self, base=None):
+        """Вернуть балансы, оценки и итог портфеля в выбранной базе."""
         portfolio, _, _ = self._load_portfolio()
         base = get_currency(
             base if base is not None else self.settings.get("DEFAULT_BASE_CURRENCY")
@@ -116,22 +126,27 @@ class WalletService:
 
     @log_action
     def get_rate(self, source, target):
+        """Вернуть курс, источник и время; устаревшие данные требуют обновления."""
         return self.rates.get_rate(source, target)
 
     def update_rates(self, source=None):
+        """Запустить Parser Service для всех либо одного источника."""
         from valutatrade_hub.parser_service.updater import RatesUpdater
 
         return RatesUpdater.create(self.storage.directory, source).run_update()
 
     def show_rates(self, currency=None, top=None, base="USD"):
+        """Вернуть отфильтрованные строки кэша с отметками актуальности."""
         return self.rates.show_rates(currency, top, base)
 
     @log_action(verbose=True)
     def buy(self, currency, amount):
+        """Купить amount единиц валюты за USD и сохранить сделку."""
         return self._trade("buy", currency, amount)
 
     @log_action(verbose=True)
     def sell(self, currency, amount):
+        """Продать amount единиц валюты за USD и сохранить сделку."""
         return self._trade("sell", currency, amount)
 
     @database_operation
@@ -185,5 +200,6 @@ class WalletService:
         return transaction
 
     def history(self):
+        """Вернуть список сохранённых сделок текущего пользователя."""
         _, _, record = self._load_portfolio()
         return list(record.get("transactions", []))

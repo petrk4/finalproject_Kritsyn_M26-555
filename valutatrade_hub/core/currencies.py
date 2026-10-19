@@ -8,12 +8,15 @@ from .utils import currency_code, number
 
 
 def nonempty(value, field):
+    """Отклонить пустое или нестроковое значение указанного поля."""
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{field} не может быть пустым")
 
 
 @dataclass(frozen=True)
 class Currency(ABC):
+    """Абстрактная валюта с неизменяемыми именем и кодом."""
+
     name: str
     code: str
 
@@ -29,6 +32,8 @@ class Currency(ABC):
 
 @dataclass(frozen=True)
 class FiatCurrency(Currency):
+    """Фиатная валюта с указанием страны или зоны эмиссии."""
+
     issuing_country: str
 
     def __post_init__(self):
@@ -36,11 +41,14 @@ class FiatCurrency(Currency):
         nonempty(self.issuing_country, "issuing_country")
 
     def get_display_info(self) -> str:
+        """Представить тип валюты и её атрибуты для UI и журналов."""
         return f"[FIAT] {self.code} — {self.name} (Issuing: {self.issuing_country})"
 
 
 @dataclass(frozen=True)
 class CryptoCurrency(Currency):
+    """Криптовалюта с алгоритмом и справочной капитализацией."""
+
     algorithm: str
     market_cap: float
 
@@ -50,6 +58,7 @@ class CryptoCurrency(Currency):
         number(self.market_cap, positive=False)
 
     def get_display_info(self) -> str:
+        """Представить тип валюты и её атрибуты для UI и журналов."""
         mantissa, exponent = f"{self.market_cap:.2e}".split("e")
         cap = f"{mantissa}e{int(exponent)}"
         return (
@@ -72,6 +81,7 @@ CURRENCIES = {
 
 
 def get_currency(code: str) -> Currency:
+    """Вернуть валюту по коду либо вызвать CurrencyNotFoundError."""
     try:
         normalized = currency_code(code)
     except ValueError as error:

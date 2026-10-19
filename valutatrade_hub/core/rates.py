@@ -14,6 +14,8 @@ DEMO_RATES = {"USD": 1.0, "EUR": 1.0786, "BTC": 59337.21, "RUB": 0.01016, "ETH":
 
 
 class RateService:
+    """Чтение прямых и кросс-курсов с проверкой срока актуальности."""
+
     def __init__(self, storage=None, ttl=None, provider=None):
         self.storage = storage or DatabaseManager().for_directory()
         self.ttl = SettingsLoader().get("RATES_TTL_SECONDS") if ttl is None else ttl
@@ -34,6 +36,7 @@ class RateService:
 
     @database_operation
     def get_rate(self, source, target, *, allow_stale=False):
+        """Вернуть курс, источник и время; устаревшие данные требуют обновления."""
         source, target = get_currency(source).code, get_currency(target).code
         if source == target:
             return {
@@ -127,6 +130,7 @@ class RateService:
         return record.copy()
 
     def show_rates(self, currency=None, top=None, base="USD"):
+        """Вернуть отфильтрованные строки кэша с отметками актуальности."""
         if top is not None and (
             isinstance(top, bool) or not isinstance(top, int) or top < 1
         ):

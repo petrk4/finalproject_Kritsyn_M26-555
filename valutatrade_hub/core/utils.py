@@ -10,12 +10,14 @@ from pathlib import Path
 
 
 def currency_code(value: str) -> str:
+    """Проверить формат кода и вернуть его в верхнем регистре."""
     if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z]{2,5}", value):
         raise ValueError("Код валюты должен содержать от 2 до 5 латинских букв")
     return value.upper()
 
 
 def number(value: float, *, positive: bool = True) -> float:
+    """Проверить конечное числовое значение; bool и отрицательные запрещены."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError("'amount' должен быть положительным числом")
     value = float(value)
@@ -49,6 +51,7 @@ class JsonStorage:
         self.directory.mkdir(parents=True, exist_ok=True)
 
     def read(self, name: str, default):
+        """Прочитать JSON или вернуть default при отсутствии файла."""
         path = self.directory / name
         if not path.exists():
             return default
@@ -62,6 +65,7 @@ class JsonStorage:
             raise ValueError(f"Не удалось прочитать {path}: {error}") from error
 
     def write(self, name: str, value) -> None:
+        """Записать JSON атомарной заменой после проверки сериализации."""
         path = self.directory / name
         temporary = None
         try:

@@ -14,6 +14,7 @@ from .config import ParserConfig
 
 
 def utc_time(value):
+    """Разобрать ISO-время и привести его к UTC."""
     parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     return (
         parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
@@ -70,6 +71,8 @@ def writer_lock(path, timeout=10):
 
 
 class ParserStorage:
+    """История измерений и атомарный снимок под блокировкой записи."""
+
     def __init__(self, config=None):
         self.config = config or ParserConfig.from_settings()
         self.rates_path = Path(self.config.RATES_FILE_PATH)
@@ -80,6 +83,7 @@ class ParserStorage:
     @database_operation
     def save(self, measurements):
         # Сначала проверяем весь пакет, затем изменяем файлы.
+        """Валидировать измерения, дополнить историю и обновить свежие пары снимка."""
         validated = []
         for item in measurements:
             source = get_currency(item["from_currency"]).code

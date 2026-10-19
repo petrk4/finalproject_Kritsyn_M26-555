@@ -15,11 +15,14 @@ LOGGER_NAME = "valutatrade.parser"
 
 
 class RatesUpdater:
+    """Объединяет корректные котировки независимо доступных источников."""
+
     def __init__(self, clients, storage):
         self.clients, self.storage = clients, storage
 
     @classmethod
     def create(cls, directory=None, source=None):
+        """Собрать updater с выбранными API-клиентами и хранилищем каталога."""
         config = ParserConfig.from_settings(directory)
         factories = {
             "coingecko": CoinGeckoClient,
@@ -31,6 +34,7 @@ class RatesUpdater:
         return cls([factory(config) for factory in selected], ParserStorage(config))
 
     def run_update(self):
+        """Опросить источники и сохранить успешные ответы; вернуть сводку и ошибки."""
         logger = logging.getLogger(LOGGER_NAME)
         logger.info("Starting rates update")
         measurements, errors, counts = [], [], {}

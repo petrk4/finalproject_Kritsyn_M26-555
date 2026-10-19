@@ -14,6 +14,7 @@ from .updater import LOGGER_NAME, RatesUpdater
 
 
 def run_scheduler(updater, interval, stop_event=None):
+    """Обновлять котировки до остановки, выдерживая интервал после попытки."""
     interval = number(interval)
     stop_event = stop_event or Event()
     while not stop_event.is_set():
@@ -28,6 +29,7 @@ def run_scheduler(updater, interval, stop_event=None):
 
 
 def main():
+    """Разобрать аргументы запуска и выполнить точку входа модуля."""
     parser = argparse.ArgumentParser(description="Parser Service валютных курсов")
     parser.add_argument("--once", action="store_true", help="одно обновление и выход")
     parser.add_argument("--interval", type=float, help="секунды между обновлениями")

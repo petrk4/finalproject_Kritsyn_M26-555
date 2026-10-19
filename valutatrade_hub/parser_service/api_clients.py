@@ -14,6 +14,8 @@ from .config import ParserConfig
 
 
 class BaseApiClient(ABC):
+    """Общий контракт клиента: получить словарь пар и числовых курсов."""
+
     source = "API"
 
     def __init__(self, config=None, session=None):
@@ -73,9 +75,12 @@ class BaseApiClient(ABC):
 
 
 class CoinGeckoClient(BaseApiClient):
+    """Пакетный запрос криптовалют по идентификаторам CoinGecko."""
+
     source = "CoinGecko"
 
     def fetch_rates(self):
+        """Получить проверенные пары к USD либо вызвать ApiRequestError."""
         ids = {
             code: self.config.CRYPTO_ID_MAP[code]
             for code in self.config.CRYPTO_CURRENCIES
@@ -111,9 +116,12 @@ class CoinGeckoClient(BaseApiClient):
 
 
 class ExchangeRateApiClient(BaseApiClient):
+    """Запрос фиата с переводом котировок USD в обратные пары."""
+
     source = "ExchangeRate-API"
 
     def fetch_rates(self):
+        """Получить проверенные пары к USD либо вызвать ApiRequestError."""
         if not self.config.EXCHANGERATE_API_KEY:
             raise ApiRequestError("Не задана переменная EXCHANGERATE_API_KEY")
         url = (

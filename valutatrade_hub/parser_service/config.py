@@ -11,6 +11,8 @@ from valutatrade_hub.infra.settings import SettingsLoader
 
 @dataclass
 class ParserConfig:
+    """Параметры поставщиков, путей и интервала; секреты берутся из env."""
+
     EXCHANGERATE_API_KEY: str = field(
         default_factory=lambda: os.getenv("EXCHANGERATE_API_KEY", ""), repr=False
     )
@@ -48,6 +50,7 @@ class ParserConfig:
 
     @classmethod
     def from_settings(cls, directory=None):
+        """Собрать конфигурацию из SettingsLoader с приоритетом directory."""
         settings = SettingsLoader()
         root = Path(directory if directory is not None else settings.get("DATA_DIR"))
         return cls(

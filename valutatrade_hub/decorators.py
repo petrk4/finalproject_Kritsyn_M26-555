@@ -10,6 +10,7 @@ from .logging_config import LOGGER_NAME
 
 
 def safe_value(value):
+    """Подготовить безопасное скалярное значение для JSON-журнала."""
     if isinstance(value, float) and not math.isfinite(value):
         return str(value)
     if value is None or isinstance(value, (str, int, float, bool)):
@@ -18,6 +19,8 @@ def safe_value(value):
 
 
 def log_action(function=None, *, verbose=False):
+    """Логировать результат операции; verbose добавляет изменения баланса."""
+
     def decorate(target):
         signature = inspect.signature(target)
 

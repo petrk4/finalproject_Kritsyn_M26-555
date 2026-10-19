@@ -16,5 +16,7 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run python -m unittest discover -s tests -v
       - run: uv run wallet --help
+      - run: uv run wallet-parser --help
+      - run: uv run python -m tools.record_demo --output dist/demo.cast
       - run: uv run python -m finalproject_kritsyn_m26_555 --version
       - run: uv build

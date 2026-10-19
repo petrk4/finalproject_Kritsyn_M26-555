@@ -27,12 +27,15 @@ DEFAULTS = {
 
 
 class SettingsLoader:
+    """Единственный кэш настроек с безопасной перезагрузкой."""
+
     _instance = None
     _lock = RLock()
 
     # __new__ выбран ради простоты: создание единственного объекта явно видно,
     # метакласс не нужен. Импорт модуля не создаёт экземпляр и не читает файлы.
     def __new__(cls):
+        """Создать настройки один раз, включая при одновременных вызовах."""
         with cls._lock:
             if cls._instance is None:
                 instance = super().__new__(cls)
@@ -43,6 +46,7 @@ class SettingsLoader:
             return cls._instance
 
     def get(self, key, default=None):
+        """Вернуть значение настройки или переданное значение по умолчанию."""
         with self._lock:
             return self._values.get(key, default)
 
