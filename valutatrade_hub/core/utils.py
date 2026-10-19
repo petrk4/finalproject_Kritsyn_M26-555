@@ -10,8 +10,8 @@ from pathlib import Path
 
 
 def currency_code(value: str) -> str:
-    if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z]{2,10}", value):
-        raise ValueError("Код валюты должен содержать от 2 до 10 латинских букв")
+    if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z]{2,5}", value):
+        raise ValueError("Код валюты должен содержать от 2 до 5 латинских букв")
     return value.upper()
 
 

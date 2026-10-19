@@ -1,48 +1,39 @@
 """Бизнес-сценарии приложения без консольного ввода и вывода."""
 
-import logging
-import time
 from datetime import UTC, datetime
-from functools import wraps
 
+from valutatrade_hub.decorators import log_action
+from valutatrade_hub.infra.database import DatabaseManager, database_operation
+from valutatrade_hub.infra.settings import SettingsLoader
+
+from .currencies import get_currency
+from .exceptions import InsufficientFundsError
 from .models import Portfolio, User, Wallet
 from .rates import RateService
-from .utils import JsonStorage, currency_code, number
-
-
-def logged_action(function):
-    """Логирует операцию и длительность без паролей и аргументов."""
-
-    @wraps(function)
-    def wrapped(*args, **kwargs):
-        start = time.perf_counter()
-        try:
-            result = function(*args, **kwargs)
-        except Exception:
-            logging.getLogger(__name__).info("%s failed", function.__name__)
-            raise
-        logging.getLogger(__name__).info(
-            "%s success %.6fs", function.__name__, time.perf_counter() - start
-        )
-        return result
-
-    return wrapped
+from .utils import number
 
 
 class WalletService:
-    def __init__(self, directory="data", *, rates=None):
-        self.storage = JsonStorage(directory)
+    def __init__(self, directory=None, *, rates=None):
+        self.settings = SettingsLoader()
+        self.database = DatabaseManager()
+        self.storage = self.database.for_directory(directory)
         self.rates = rates or RateService(self.storage)
         self.current_user = None
+        self._initialize_storage()
+
+    @database_operation
+    def _initialize_storage(self):
         for name, default in (
             ("users.json", []),
             ("portfolios.json", []),
             ("rates.json", {}),
         ):
-            if not (self.storage.directory / name).exists():
+            if not self.storage.exists(name):
                 self.storage.write(name, default)
 
-    @logged_action
+    @log_action
+    @database_operation
     def register(self, username, password):
         users = self.storage.read("users.json", [])
         user_id = max((item["user_id"] for item in users), default=0) + 1
@@ -62,7 +53,7 @@ class WalletService:
             raise
         return user.get_user_info()
 
-    @logged_action
+    @log_action
     def login(self, username, password):
         for record in self.storage.read("users.json", []):
             if record["username"] == username:
@@ -98,13 +89,12 @@ class WalletService:
                 return portfolio, records, record
         raise ValueError("Портфель пользователя не найден")
 
-    def show_portfolio(self, base="USD"):
+    def show_portfolio(self, base=None):
         portfolio, _, _ = self._load_portfolio()
-        base = currency_code(base)
-        try:
-            self.rates.get_rate(base, "USD")
-        except ValueError as error:
-            raise ValueError(f"Неизвестная базовая валюта '{base}'") from error
+        base = get_currency(
+            base if base is not None else self.settings.get("DEFAULT_BASE_CURRENCY")
+        ).code
+        self.rates.get_rate(base, "USD")
         rows = []
         sources = set()
         for code, wallet in portfolio.wallets.items():
@@ -125,20 +115,22 @@ class WalletService:
             "sources": sorted(sources),
         }
 
+    @log_action
     def get_rate(self, source, target):
         return self.rates.get_rate(source, target)
 
-    @logged_action
+    @log_action(verbose=True)
     def buy(self, currency, amount):
         return self._trade("buy", currency, amount)
 
-    @logged_action
+    @log_action(verbose=True)
     def sell(self, currency, amount):
         return self._trade("sell", currency, amount)
 
+    @database_operation
     def _trade(self, operation, currency, amount):
         portfolio, records, record = self._load_portfolio()
-        code, amount = currency_code(currency), number(amount)
+        code, amount = get_currency(currency).code, number(amount)
         if code == "USD":
             raise ValueError(
                 "USD — расчётная валюта. Выберите другую валюту для сделки."
@@ -147,6 +139,8 @@ class WalletService:
         cost = number(amount * rate["rate"])
         before = portfolio.wallets[code].balance if code in portfolio.wallets else 0.0
         if operation == "buy":
+            if "USD" not in portfolio.wallets:
+                raise InsufficientFundsError(0.0, cost, "USD")
             usd = portfolio.get_wallet("USD")
             usd.withdraw(cost)
             wallet = (
@@ -156,6 +150,8 @@ class WalletService:
             )
             wallet.deposit(amount)
         else:
+            if code not in portfolio.wallets:
+                raise InsufficientFundsError(0.0, amount, code)
             wallet = portfolio.get_wallet(code)
             wallet.withdraw(amount)
             usd = (

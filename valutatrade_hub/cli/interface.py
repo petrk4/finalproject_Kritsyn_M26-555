@@ -1,14 +1,21 @@
 """Разбор пользовательских команд и представление результатов."""
 
 import argparse
-import logging
 import shlex
 from functools import wraps
 from importlib.metadata import version
 
 from prettytable import PrettyTable
 
+from valutatrade_hub.core.currencies import CURRENCIES
+from valutatrade_hub.core.exceptions import (
+    ApiRequestError,
+    CurrencyNotFoundError,
+    InsufficientFundsError,
+)
 from valutatrade_hub.core.usecases import WalletService
+from valutatrade_hub.infra.settings import SettingsLoader
+from valutatrade_hub.logging_config import setup_logging
 
 
 class CommandParser(argparse.ArgumentParser):
@@ -39,7 +46,7 @@ def command_parser():
         command.add_argument("--username", required=True)
         command.add_argument("--password", required=True)
     command = commands.add_parser("show-portfolio")
-    command.add_argument("--base", default="USD")
+    command.add_argument("--base", default=None)
     for name in ("buy", "sell"):
         command = commands.add_parser(name)
         command.add_argument("--currency", required=True)
@@ -48,7 +55,7 @@ def command_parser():
     command = commands.add_parser("get-rate")
     command.add_argument("--from", dest="source", required=True)
     command.add_argument("--to", dest="target", required=True)
-    for name in ("help", "history", "logout", "exit", "quit"):
+    for name in ("help", "history", "logout", "exit", "quit", "currencies"):
         commands.add_parser(name)
     return parser
 
@@ -80,6 +87,10 @@ class WalletApplication:
             case "help":
                 self.parser.print_help()
                 print("Подробная справка: <команда> --help")
+            case "currencies":
+                for currency in CURRENCIES.values():
+                    print(currency.get_display_info())
+                print("Капитализация криптовалют — учебные данные.")
             case "register":
                 user = self.service.register(args.username, args.password)
                 print(
@@ -152,6 +163,15 @@ class WalletApplication:
                 break
             except SystemExit:
                 continue
+            except InsufficientFundsError as error:
+                print(error)
+            except CurrencyNotFoundError as error:
+                print(error)
+                print("Поддерживаемые валюты: " + ", ".join(CURRENCIES))
+                print("Справка: get-rate --help")
+            except ApiRequestError as error:
+                print(error)
+                print("Повторите позже или проверьте подключение к сети.")
             except (ValueError, OSError, KeyError, TypeError) as error:
                 print(f"Ошибка: {error}")
         print("До свидания!")
@@ -163,17 +183,16 @@ def main():
         "--version", action="version", version=version("finalproject_Kritsyn_M26-555")
     )
     parser.add_argument(
-        "--data-dir", default="data", help="каталог локальных JSON-файлов"
+        "--data-dir", default=None, help="каталог локальных JSON-файлов"
     )
+    parser.add_argument("--config", help="путь к pyproject.toml или config.json")
     args = parser.parse_args()
     try:
+        settings = SettingsLoader()
+        if args.config:
+            settings.reload(args.config)
+        setup_logging(settings)
         service = WalletService(args.data_dir)
-        logging.basicConfig(
-            filename=service.storage.directory / "operations.log",
-            encoding="utf-8",
-            level=logging.INFO,
-            format="%(asctime)s %(message)s",
-        )
         WalletApplication(service).run()
     except (ValueError, OSError) as error:
         parser.exit(1, f"Ошибка запуска: {error}\n")

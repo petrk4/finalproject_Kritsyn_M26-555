@@ -2,22 +2,27 @@
 
 from datetime import UTC, datetime
 
-from .utils import JsonStorage, cached, currency_code, number
+from valutatrade_hub.infra.database import DatabaseManager, database_operation
+from valutatrade_hub.infra.settings import SettingsLoader
+
+from .currencies import get_currency
+from .exceptions import ApiRequestError
+from .utils import cached, number
 
 DEMO_RATES = {"USD": 1.0, "EUR": 1.0786, "BTC": 59337.21, "RUB": 0.01016, "ETH": 3720.0}
 
 
 class RateService:
-    def __init__(self, storage=None, ttl=300, provider=None):
-        self.storage = storage or JsonStorage()
-        self.ttl = ttl
+    def __init__(self, storage=None, ttl=None, provider=None):
+        self.storage = storage or DatabaseManager().for_directory()
+        self.ttl = SettingsLoader().get("RATES_TTL_SECONDS") if ttl is None else ttl
         self.provider = provider or self._demo_rate
-        self._fetch = cached(ttl)(self.provider)
+        self._fetch = cached(self.ttl)(self.provider)
 
     @staticmethod
     def _demo_rate(source, target):
         if source not in DEMO_RATES or target not in DEMO_RATES:
-            raise ValueError(
+            raise ApiRequestError(
                 f"Курс {source}→{target} недоступен. Повторите попытку позже."
             )
         return {
@@ -26,8 +31,9 @@ class RateService:
             "source": "Demo (учебная заглушка)",
         }
 
+    @database_operation
     def get_rate(self, source, target):
-        source, target = currency_code(source), currency_code(target)
+        source, target = get_currency(source).code, get_currency(target).code
         rates = self.storage.read("rates.json", {})
         key = f"{source}_{target}"
         record = rates.get(key)
@@ -84,10 +90,17 @@ class RateService:
         try:
             record = dict(self._fetch(source, target))
             number(record["rate"])
-            datetime.fromisoformat(record["updated_at"])
+            updated = datetime.fromisoformat(record["updated_at"])
+            if updated.tzinfo is None:
+                updated = updated.replace(tzinfo=UTC)
+            age = (datetime.now(UTC) - updated).total_seconds()
+            if age < 0 or (self.ttl > 0 and age >= self.ttl):
+                raise ValueError("Поставщик вернул устаревшую котировку")
+        except ApiRequestError:
+            raise
         except (KeyError, TypeError, ValueError, OSError) as error:
-            raise ValueError(
-                f"Курс {source}→{target} недоступен. Повторите попытку позже."
+            raise ApiRequestError(
+                f"Курс {source}→{target} недоступен: {error}"
             ) from error
         rates[key] = record
         rates["source"] = record.get("source", "ParserService")

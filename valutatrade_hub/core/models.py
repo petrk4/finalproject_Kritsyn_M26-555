@@ -5,7 +5,9 @@ import hmac
 import secrets
 from datetime import datetime
 
-from .utils import currency_code, number
+from .currencies import get_currency
+from .exceptions import InsufficientFundsError
+from .utils import number
 
 
 class User:
@@ -100,7 +102,7 @@ class Wallet:
 
     @currency_code.setter
     def currency_code(self, value):
-        self._currency_code = currency_code(value)
+        self._currency_code = get_currency(value).code
 
     @property
     def balance(self):
@@ -116,10 +118,7 @@ class Wallet:
     def withdraw(self, amount: float):
         amount = number(amount)
         if amount > self.balance:
-            raise ValueError(
-                f"Недостаточно средств: доступно {self.balance:.8f} "
-                f"{self.currency_code}, требуется {amount:.8f} {self.currency_code}"
-            )
+            raise InsufficientFundsError(self.balance, amount, self.currency_code)
         self.balance = self.balance - amount
 
     def get_balance_info(self):
@@ -151,14 +150,14 @@ class Portfolio:
         return self._wallets.copy()
 
     def add_currency(self, code: str):
-        code = currency_code(code)
+        code = get_currency(code).code
         if code in self._wallets:
             raise ValueError(f"Кошелёк '{code}' уже существует")
         self._wallets[code] = Wallet(code)
         return self._wallets[code]
 
     def get_wallet(self, code: str):
-        code = currency_code(code)
+        code = get_currency(code).code
         if code not in self._wallets:
             raise ValueError(
                 f"У вас нет кошелька '{code}'. "
@@ -171,7 +170,7 @@ class Portfolio:
             from .rates import RateService
 
             self._rate_provider = RateService().get_rate
-        base_currency = currency_code(base_currency)
+        base_currency = get_currency(base_currency).code
         self._rate_provider(base_currency, "USD")
         return sum(
             wallet.balance * self._rate_provider(code, base_currency)["rate"]
